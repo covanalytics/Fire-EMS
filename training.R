@@ -1,22 +1,22 @@
 
 setwd("U:/CityWide Performance/Fire/Training")
 
-library("xlsx", lib.loc="~/R/win-library/3.2")
-library("plyr", lib.loc="~/R/win-library/3.2")
-library("dplyr", lib.loc="~/R/win-library/3.2")
-library("tidyr", lib.loc="~/R/win-library/3.2.5")
-library("reshape", lib.loc="~/R/win-library/3.2")
-library("reshape2", lib.loc="~/R/win-library/3.2.5")
-library("stringr", lib.loc="~/R/win-library/3.2")
-library("zoo", lib.loc="~/R/win-library/3.2")
-library("lubridate", lib.loc="~/R/win-library/3.2")
-library("splitstackshape", lib.loc="~/R/win-library/3.2")
+library("xlsx")
+library("plyr")
+library("dplyr")
+library("tidyr")
+library("reshape")
+library("reshape2")
+library("stringr")
+library("zoo")
+library("lubridate")
+library("splitstackshape")
 
 
 training <-  read.csv("TRAINING.csv", header=TRUE, stringsAsFactors = FALSE)
 
 
-
+#Drop first and last name of staff
 training <- training[c(-13,-14)]
 
 #write to CovStat Repository
