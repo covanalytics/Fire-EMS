@@ -32,15 +32,8 @@ runs <- run17
 runs <- do.call("rbind", list (run14, run15, run16, run17)) 
 runs <- runs[c(-10:-12)]
 
-
-
 write.csv(runs,"U:/OpenGov/Unique Reports/Fire/Data/ALL.csv" )
 
-
-
-#runs <-  read.csv("responses16.csv", header=TRUE, stringsAsFactors = FALSE)
-
-##runs$alm_date <- as.Date(runs$alm_date, "%d-%B-%Y")
 
 #####################################################################################################################################
 
