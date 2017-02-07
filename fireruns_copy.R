@@ -1,5 +1,5 @@
 
-setwd("U:/OpenGov/Unique Reports/Fire/Data/NewRuns")
+setwd("U:/CityWide Performance/CovStat/CovStat Projects/Fire/Runs/Updates")
 
 library("xlsx")
 library("plyr")
@@ -9,33 +9,18 @@ library("splitstackshape")
 library("magrittr")
 library("gmodels")
 library("descr")
-
-# Read the contents of the file into a data.frame
-#run13 <-  read.csv("2013runs.csv", header=TRUE, stringsAsFactors = FALSE)
-#run13$FiscalYear <- "2013"
-
-run14 <-  read.csv("FY2014runs.csv", header=TRUE, stringsAsFactors = FALSE)
-run14$FiscalYear <- "2014"
-
-run15 <-  read.csv("FY2015runs.csv", header=TRUE, stringsAsFactors = FALSE)
-run15$FiscalYear <- "2015"
-
-run16 <-  read.csv("FY2016runs.csv", header=TRUE, stringsAsFactors = FALSE)
-run16$FiscalYear <- "2016"
-
+library("arcgisbinding")
+library("sp")
+library("spdep")
+library("rgdal")
+library("maptools")
+library("ggmap")
 
 ###Just runs for current update now
-run17 <-  read.csv("FY2017runs.csv", header=TRUE, stringsAsFactors = FALSE)
+run17 <-  read.csv("Jan17.csv", header=TRUE, stringsAsFactors = FALSE)
 run17$FiscalYear <- "2017"
 runs <- run17
-####
-runs <- do.call("rbind", list (run14, run15, run16, run17)) 
-runs <- runs[c(-10:-12)]
 
-write.csv(runs,"U:/OpenGov/Unique Reports/Fire/Data/ALL.csv" )
-
-
-#####################################################################################################################################
 
 #### Assign General Fire Codes based on first digit in code number in a column called G_code"
 runs$G_codeN[runs$inci_type >= 100 & runs$inci_type <= 199] <- 1
@@ -59,10 +44,6 @@ runs$G_code[runs$inci_type >= 800 & runs$inci_type <= 899] <- "Severe Weather & 
 runs$G_codeN[runs$inci_type >= 900 & runs$inci_type <= 999] <- 9
 runs$G_code[runs$inci_type >= 900 & runs$inci_type <= 999] <- "Special Incident Type"
 
-
-#####################################################################################################################################
-####Drop rows with EMS only runs; these have "NA" in inci_type column
-##runs <- runs[!is.na(runs$inci_type),]
 
 ####Assign Next Level Groups based on first tow digits in code number in a column called S_code
 ###Fire codes
@@ -156,61 +137,80 @@ runs$date <- ifelse(grepl("Jul", runs$alm_date),"July",
                     ifelse(grepl("Jan", runs$alm_date),"January", 
                     ifelse(grepl("Feb", runs$alm_date),"February", ""))))))))))))
 
+######################################################
+## Spatial Data Creation                            ##
+## assign closest neighborhood and sector in ArcGIS ##
+######################################################
 
-####For Geocoding Current Update###
-runs1 <- runs
-runs1 <- subset(runs1, UpdateMonth == "16-Nov")
-write.csv(runs1, file="C:/Users/tsink/Mapping/Geocoding/Fire/FIRE_RUNSd.csv")
+#### Create Spatial Points Data.Frame from Lat/Long Coordinates
+runsSP <- runs
+coordinates(runsSP) <- ~longitude+latitude
 
-###Mask runs object for Response Time analysis for OpenGov
-fire.time <- runs
+### Define Coordinate system for spatial points data.frame
+reference <- CRS("+init=epsg:4326")
+proj4string(runsSP) <- reference
 
-
-##Write file for Response Times in OpenGov#######
-###Make sure to add a new column calculating Response Time (Arv Time - Dispatch Time)*24*60
-write.csv(runs, file="U:/OpenGov/Unique Reports/Fire/Data/FireRunTimeOpenGov.csv")
-
-
-####Runs for OpenGov#####
-runs$count <- 1
-
-keeps <- names(runs) %in% c("descript", "FiscalYear", "G_code", "S_code", "descript_b", "descript_d", "count")
-runs <- runs[keeps]
-runs <- runs[c("FiscalYear", "G_code", "S_code", "descript", "descript_b", "descript_d", "count")]
-names(runs) <- c("Fiscal Year", "Run Code", "Incident Type","Description", "Mutual Aid Type", "Mutual Aid Dept.", "Count")
-
-runs$`Mutual Aid Type` <- sub("^$", "none", runs$`Mutual Aid Type`)
-runs$`Mutual Aid Type` <- sub("None", "none", runs$`Mutual Aid Type`)
-runs$`Mutual Aid Dept.` <- sub("^$", "none", runs$`Mutual Aid Dept`)
-
-write.csv(runs, file="U:/OpenGov/Unique Reports/Fire/Data/FireRunsOpenGov.csv", row.names = FALSE)
-
-###Response time###############
-##Calculating Response Time (Arv Time - Alarm Time)*24*60
-
-fire.time$disp_time <- strptime(fire.time$disp_time, "%H:%M:%S")
-fire.time$alm_time <- strptime(fire.time$alm_time, "%H:%M:%S")
-fire.time$arv_time <- strptime(fire.time$arv_time, "%H:%M:%S")
-
-fire.time$ResponseTime <-as.numeric(round(difftime(fire.time$arv_time, fire.time$alm_time, units="mins"), 2))
+#### Write spatial points data.frame to a shapefile
+writeOGR(obj = runsSP, dsn ="C:/Users/tsink/Mapping/Geocoding/Fire", 
+         layer = "FireRunsUpdate", driver = 'ESRI Shapefile', overwrite_layer = TRUE)
 
 
-fire.time$Count <- 1 #Add count for each record to use in getting average response time for each year
-fire.time<- subset(fire.time, fire.time$ResponseTime>0 & fire.time$ResponseTime<=50)
+####Connect to ArcGIS####
+#### Initialize arcgisbinding ----
+arc.check_product()
 
-###Aggregating minutes by year type
-fire.time <- aggregate(cbind(ResponseTime, Count) ~  FiscalYear + G_codeN + G_code, fire.time, sum)
-fire.time <- fire.time[order(fire.time$FiscalYear, fire.time$G_codeN, -fire.time$Count),]
+#### Read GIS Features -----
+readFIRE<- arc.open("C:/Users/tsink/Mapping/Geocoding/Fire/Fire2.shp")
 
-####Getting total average minutes by dividing total call minutes by number of calls
-fire.time$Avg.Minutes <- fire.time$ResponseTime/ fire.time$Count
-fire.time$Avg.Minutes <- round(fire.time$Avg.Minutes, 2)
+#### Create Data.Frame from GIS data -----
+fireGIS <- arc.select(readFIRE)
 
-fire.time$G_codeN <- NULL
-fire.time$ResponseTime <- NULL
-fire.time$Count <- NULL
+####Bind hidden lat/long coordinates back to data frame ------------
+shape <- arc.shape(fireGIS)
+fireGIS<- data.frame(fireGIS, long=shape$x, lat=shape$y)
 
-names(fire.time) <- c("Fiscal Year", "Run Code", "Average Minutes")
+#### Mutual Aid ####
+# Assign First Mutual Aid ------
+fireGIS$NbhdLabel[fireGIS$Distance > 0] <- "Mutual Aid"
+  
+# Assign Closest Neighborhood for calls in downtown sector but outside of neighborhod boundary -----
+fireGIS$NbhdLabel <- ifelse(fireGIS$Distance_1 == 0 & fireGIS$NbhdLabel == "Mutual Aid", as.character(fireGIS$NEIGHBORHO),
+                              as.character(fireGIS$NbhdLabel))
+  
+# Assign Mutual Aid to fire sector -----
+fireGIS$Runcard[fireGIS$Distance_1 > 0] <- "Mutual Aid"
+   
+# If call is inside neighborhood but outside sector -----
+fireGIS$NbhdLabel <- ifelse(fireGIS$Distance == 0 & fireGIS$Distance_1 > 0, "Mutual Aid",
+                                as.character(fireGIS$NbhdLabel))
+  
+ 
+#### Delete, Rename, and Order Columns ####
+fireGIS <- fireGIS[, c(-1:-2, -13:-15, -54:-58, -60:-71, -74)] 
+names(fireGIS) <- c("Field1", "inci_no", "exp_no", "inci_type", "descript", "alm_date", "number", "st_prefix",
+                    "street", "st_type", "addr_2", "city", "zip", "mutl_aid", "descript_b", "disp_time", "alm_time", "arv_time",
+                    "clr_time", "shift", "prop_loss", "no_prop_lo", "cont_loss", "no_cont_lo", "prop_val", "no_prop_val",
+                    "cont_val", "noCont_va", "fire_sprd", "descript_c", "ma_dept", "descript_d", "unit", "resp_code",
+                    "notif_time", "notif_date", "roll_date", "roll_time", "arv_date", "arv_time", "cancelled", "cancel_dat",
+                    "cancenl_tim", "response_t", "FiscalYear", "G_codeN", "G_code", "S_code", "NbhdLabel", "Id_1", "Runcard",
+                    "longitude", "latitude")
 
-write.csv(fire.time, file="U:/OpenGov/Unique Reports/Fire/Data/FireRunTimeOpenGov.csv", row.names = FALSE)
+fireGIS <- fireGIS[, c(1:30, 53, 52, 31:51)]
+
+###   SQLite Database ####
+### Append new data -----
+library("RSQLite")
+cons.fire <- dbConnect(drv=RSQLite::SQLite(), dbname="O:/AllUsers/CovStat/Data Portal/repository/Data/Database Files/Fire.db")
+dbWriteTable(cons.fire, "FireRuns", fireGIS, append = TRUE)
+
+
+#### Load all data and write over tableau file -----
+alltables <- dbListTables(cons.fire)
+dash_runsF <- dbGetQuery(cons.fire, 'select * from FireRuns')
+write.csv(dash_runsF, "U:/CityWide Performance/CovStat/CovStat Projects/Fire/TableauFiles/FireRuns.csv")
+dbDisconnect(cons.fire)
+
+#### CovStat Repository ----
+write.csv(dash_runsF, file="O:/AllUsers/CovStat/Data Portal/Repository/Data/Fire_EMS/FireRuns.csv")
+
 
