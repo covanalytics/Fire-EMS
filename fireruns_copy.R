@@ -17,8 +17,9 @@ library("maptools")
 library("ggmap")
 
 ###Just runs for current update now
-run17 <-  read.csv("Jan17.csv", header=TRUE, stringsAsFactors = FALSE)
-run17$FiscalYear <- "2017"
+run17 <-  read.csv("Update.csv", header=TRUE, stringsAsFactors = FALSE)
+#change to calendar year
+run17$Year <- "2017"
 runs <- run17
 
 
@@ -137,37 +138,30 @@ runs$date <- ifelse(grepl("Jul", runs$alm_date),"July",
                     ifelse(grepl("Jan", runs$alm_date),"January", 
                     ifelse(grepl("Feb", runs$alm_date),"February", ""))))))))))))
 
-######################################################
-## Spatial Data Creation                            ##
-## assign closest neighborhood and sector in ArcGIS ##
-######################################################
-
-#### Create Spatial Points Data.Frame from Lat/Long Coordinates
-runsSP <- runs
-coordinates(runsSP) <- ~longitude+latitude
-
-### Define Coordinate system for spatial points data.frame
-reference <- CRS("+init=epsg:4326")
-proj4string(runsSP) <- reference
-
-#### Write spatial points data.frame to a shapefile
-writeOGR(obj = runsSP, dsn ="C:/Users/tsink/Mapping/Geocoding/Fire", 
-         layer = "FireRunsUpdate", driver = 'ESRI Shapefile', overwrite_layer = TRUE)
+#### Send to ArcGIS ####
+send_arcgis <- function(dataframe, path, layerName){
+  coordinates(dataframe) <- ~longitude+latitude
+  ## Define Coordinate system for spatial points data.frame 
+  reference <- CRS("+init=epsg:4326")
+  proj4string(dataframe) <- reference
+  ## Assign closest neighborhood and sector in ArcGIS
+  writeOGR(obj = dataframe, dsn = path, layer = layerName, driver = 'ESRI Shapefile', overwrite_layer = TRUE)
+}
+send_arcgis(runs, "C:/Users/tsink/Mapping/Geocoding/Fire", "FireRunsUpdate")
 
 
-####Connect to ArcGIS####
-#### Initialize arcgisbinding ----
-arc.check_product()
-
-#### Read GIS Features -----
-readFIRE<- arc.open("C:/Users/tsink/Mapping/Geocoding/Fire/Fire2.shp")
-
-#### Create Data.Frame from GIS data -----
-fireGIS <- arc.select(readFIRE)
-
-####Bind hidden lat/long coordinates back to data frame ------------
-shape <- arc.shape(fireGIS)
-fireGIS<- data.frame(fireGIS, long=shape$x, lat=shape$y)
+#### Receive from ArcGIS ####
+receive_arcgis <- function(fromPath, dataframeName) {
+  arc.check_product()
+  ## Read GIS Features 
+  read <- arc.open(fromPath)
+  ## Create Data.Frame from GIS data 
+  dataframeName <- arc.select(read)
+  ## Bind hidden lat/long coordinates back to data frame 
+  shape <- arc.shape(dataframeName)
+  dataframeName<- data.frame(dataframeName, long=shape$x, lat=shape$y)
+}
+fireGIS <- receive_arcgis("C:/Users/tsink/Mapping/Geocoding/Fire/Fire2.shp", fireGIS)
 
 #### Mutual Aid ####
 # Assign First Mutual Aid ------
@@ -189,10 +183,10 @@ fireGIS$NbhdLabel <- ifelse(fireGIS$Distance == 0 & fireGIS$Distance_1 > 0, "Mut
 fireGIS <- fireGIS[, c(-1:-2, -13:-15, -54:-58, -60:-71, -74)] 
 names(fireGIS) <- c("Field1", "inci_no", "exp_no", "inci_type", "descript", "alm_date", "number", "st_prefix",
                     "street", "st_type", "addr_2", "city", "zip", "mutl_aid", "descript_b", "disp_time", "alm_time", "arv_time",
-                    "clr_time", "shift", "prop_loss", "no_prop_lo", "cont_loss", "no_cont_lo", "prop_val", "no_prop_val",
-                    "cont_val", "noCont_va", "fire_sprd", "descript_c", "ma_dept", "descript_d", "unit", "resp_code",
+                    "clr_time", "shift", "prop_loss", "no_prop_lo", "cont_loss", "no_cont_lo", "prop_val", "no_prop_va",
+                    "cont_val", "no_cont_va", "fire_sprd", "descript_c", "ma_dept", "descript_d", "unit", "resp_code",
                     "notif_time", "notif_date", "roll_date", "roll_time", "arv_date", "arv_time", "cancelled", "cancel_dat",
-                    "cancenl_tim", "response_t", "FiscalYear", "G_codeN", "G_code", "S_code", "NbhdLabel", "Id_1", "Runcard",
+                    "cancel_tim", "response_t", "Year", "G_codeN", "G_code", "S_code", "NbhdLabel", "Id_1", "Runcard",
                     "longitude", "latitude")
 
 fireGIS <- fireGIS[, c(1:30, 53, 52, 31:51)]
