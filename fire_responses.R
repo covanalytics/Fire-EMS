@@ -20,7 +20,6 @@ library("ggmap")
 #### Load Update ####
 responses <-  read.csv("Update.csv", header=TRUE, stringsAsFactors = FALSE)
 #change to calendar year
-responses$Year <- "2017"
 runs <- responses
 
 #### NIFRS Codes ####
@@ -152,39 +151,29 @@ runs$Company[runs$unit == "A5"] <- "Special Event"
 runs$Company[runs$unit =="A3"& runs$Fiscal.Year == "2014"] <- "Company 5: South Covington (1255 Hands Pike)"
 runs$Company[runs$unit =="A3"& runs$Fiscal.Year == "2015"] <- "Company 5: South Covington (1255 Hands Pike)"
 
-##########################################################
-#### Spatial Data Creation                            ####
-#### Assign closest neighborhood and sector in ArcGIS ####
-#### Join neighborhoodds first, then fire sectors     ####
-##########################################################
+#### Send to ArcGIS ####
+send_arcgis <- function(dataframe, path, layerName){
+  coordinates(dataframe) <- ~longitude+latitude
+  ## Define Coordinate system for spatial points data.frame 
+  reference <- CRS("+init=epsg:4326")
+  proj4string(dataframe) <- reference
+  ## Assign closest neighborhood and sector in ArcGIS
+  writeOGR(obj = dataframe, dsn = path, layer = layerName, driver = 'ESRI Shapefile', overwrite_layer = TRUE)
+}
+send_arcgis(runs, "C:/Users/tsink/Mapping/Geocoding/Fire", "FireUnitResponseUpdate")
 
-#### Create Spatial Points Data.Frame from Lat/Long Coordinates ----
-runsSP <- runs
-coordinates(runsSP) <- ~longitude+latitude
-
-### Define Coordinate system for spatial points data.frame ----
-reference <- CRS("+init=epsg:4326")
-proj4string(runsSP) <- reference
-
-#### Write spatial points data.frame to a shapefile ----
-writeOGR(obj = runsSP, dsn ="C:/Users/tsink/Mapping/Geocoding/Fire", 
-         layer = "FireUnitResponseUpdate", driver = 'ESRI Shapefile', overwrite_layer = TRUE)
-
-#########################
-####Connect to ArcGIS####
-#########################
-#### Initialize arcgisbinding----
-arc.check_product()
-
-#### Read GIS Features -----
-readFIREU<- arc.open("C:/Users/tsink/Mapping/Geocoding/Fire/RESPONSES2.shp")
-
-#### Create Data.Frame from GIS data -----
-fireUGIS <- arc.select(readFIREU)
-
-####Bind hidden lat/long coordinates back to data frame ------------
-shape <- arc.shape(fireUGIS)
-fireUGIS<- data.frame(fireUGIS, long=shape$x, lat=shape$y)
+#### Receive from ArcGIS ####
+receive_arcgis <- function(fromPath, dataframeName) {
+  arc.check_product()
+  ## Read GIS Features 
+  read <- arc.open(fromPath)
+  ## Create Data.Frame from GIS data 
+  dataframeName <- arc.select(read)
+  ## Bind hidden lat/long coordinates back to data frame 
+  shape <- arc.shape(dataframeName)
+  dataframeName<- data.frame(dataframeName, long=shape$x, lat=shape$y)
+}
+fireUGIS <- receive_arcgis("C:/Users/tsink/Mapping/Geocoding/Fire/RESPONSES2.shp", fireUGIS)
 
 #### Mutual Aid ####
 # Assign First Mutual Aid ------
